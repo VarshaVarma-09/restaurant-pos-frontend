@@ -1,8 +1,125 @@
-* {
-  margin: 0;
-  padding: 0;
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap");
+
+:root {
+  font-family: "DM Sans", "Segoe UI", sans-serif;
+  color: #17231f;
+  background: #f5f7f4;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+  --color-primary: #176b52;
+  --color-primary-hover: #105940;
+  --color-primary-soft: #e8f3ed;
+  --color-accent: #d99a42;
+  --color-success: #247a4a;
+  --color-success-soft: #e8f4eb;
+  --color-warning: #a76613;
+  --color-warning-soft: #fff3df;
+  --color-danger: #b7473d;
+  --color-danger-soft: #fbecea;
+
+  --color-page: #f5f7f4;
+  --color-surface: #ffffff;
+  --color-surface-muted: #f8faf8;
+  --color-border: #e4e9e5;
+  --color-border-strong: #cbd5ce;
+  --color-text: #17231f;
+  --color-text-soft: #53625b;
+  --color-muted: #849189;
+  --color-sidebar: #173d32;
+  --color-sidebar-muted: #b4c9bd;
+
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+
+  --shadow-sm: 0 2px 8px rgb(24 47 36 / 5%);
+  --shadow-md: 0 12px 28px rgb(24 47 36 / 8%);
+  --shadow-lg: 0 24px 60px rgb(24 47 36 / 15%);
+
+  --sidebar-width: 252px;
+  --content-max: 1440px;
+}
+
+*,
+*::before,
+*::after {
   box-sizing: border-box;
 }
-body{
+
+html {
+  min-width: 320px;
+  min-height: 100%;
+  scroll-behavior: smooth;
+}
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
   margin: 0;
+  color: var(--color-text);
+  background: var(--color-page);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+body,
+button,
+input,
+select,
+textarea {
+  font-family: "DM Sans", "Segoe UI", sans-serif;
+}
+
+button,
+input,
+select,
+textarea {
+  font-size: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+img,
+svg {
+  display: block;
+  max-width: 100%;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+::selection {
+  color: #fff;
+  background: var(--color-primary);
+}
+
+:focus-visible {
+  outline: 3px solid rgb(217 154 66 / 65%);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

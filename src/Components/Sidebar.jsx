@@ -1,61 +1,32 @@
-import { Link } from "react-router-dom";
+import { NavLink, useNavigate } from "react-router-dom";
+import { useAuth } from "../Context/useAuth";
 
 function Sidebar() {
-    const currentUser = JSON.parse(
-        localStorage.getItem("currentUser")
-    );
-
-    const role = currentUser?.role;
-
-    function logout() {
-        localStorage.removeItem("currentUser");
-        window.location.href = "/login";
-    }
+    const { user, logout, can } = useAuth();
+    const navigate = useNavigate();
 
     return (
         <div className="sidebar">
             <h2>Restaurant POS</h2>
 
-            {currentUser && (
+            {user && (
                 <div className="user-info">
-                    <p>{currentUser.username}</p>
-                    <p>{currentUser.role}</p>
+                    <p>{user.username}</p>
+                    <p>{user.role}</p>
                 </div>
             )}
 
-            <Link to="/">Dashboard</Link>
-
-            {(role === "Waiter" ||
-                role === "Cashier" ||
-                role === "Manager" ||
-                role === "Owner") && (
-                <>
-                    <Link to="/orders">Orders</Link>
-                    <Link to="/tables">Tables</Link>
-                </>
-            )}
-
-            {(role === "Cashier" ||
-                role === "Manager" ||
-                role === "Owner") && (
-                <Link to="/billing">Billing</Link>
-            )}
-
-            {(role === "Manager" ||
-                role === "Owner") && (
-                <Link to="/reports">Reports</Link>
-            )}
-
-            {role === "Owner" && (
-                <>
-                    <Link to="/menu">Menu</Link>
-                    <Link to="/settings">Settings</Link>
-                </>
-            )}
-
-            <button onClick={logout}>
-                Logout
-            </button>
+            {user && <>
+                {user.role !== "Kitchen Staff" && <NavLink to="/">Dashboard</NavLink>}
+                {can("orders:view") && <NavLink to="/orders">Orders</NavLink>}
+                {can("kitchen:view") && <NavLink to="/kitchen">{user.role === "Kitchen Staff" ? "Kitchen Dashboard" : "Kitchen"}</NavLink>}
+                {can("tables:view") && <NavLink to="/tables">Tables</NavLink>}
+                {can("menu:view") && <NavLink to="/menu">Menu</NavLink>}
+                {can("billing:view") && <NavLink to="/billing">Billing</NavLink>}
+                {(can("reports:limited") || can("reports:full")) && <NavLink to="/reports">Reports</NavLink>}
+                {(can("settings:limited") || can("settings:full")) && <NavLink to="/settings">Settings</NavLink>}
+                <button onClick={() => { logout(); navigate("/login", { replace: true }); }}>Logout</button>
+            </>}
         </div>
     );
 }
