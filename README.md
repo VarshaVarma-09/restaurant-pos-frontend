@@ -1,223 +1,294 @@
 # Restaurant POS & Billing System
 
-I built this full-stack POS application to handle everyday restaurant service operations: tables, orders, KOTs, billing, payments and reports. A React frontend communicates with an Express API that stores operational data in MongoDB through Mongoose. The app is set up for local use and portfolio review; it has not been deployed and has no live demo.
+A full-stack restaurant point-of-sale application built to explore day-to-day service operations in one place. The React interface connects to an Express API backed by MongoDB and Mongoose. This is a resume and portfolio project intended for local inspection and development; it is not a production restaurant deployment and has no hosted demo.
 
-## What it does
+## Problem and objectives
 
-- Provides separate Owner, Manager, Cashier, Waiter and Kitchen Staff accounts.
-- Supports table and menu management, dine-in and takeaway orders, Waiter assignment and additional items on an open order.
-- Creates sequential kitchen order tickets (KOTs), tracks kitchen progress, and records served or cancelled tickets and item quantities.
-- Builds one consolidated bill per order, with discounts, configurable GST, partial or full payment records, and separately tracked tips.
-- Shows collection and order reports, with item-wise sales and full GST summaries restricted to Owner and Manager.
-- Includes an optional, read-only Gemini AI Assistant for restaurant data. It is available to Owner and Manager and requires your own Gemini API key and model configuration.
+Restaurant service touches tables, orders, kitchen tickets, bills, payments and reporting. This project brings those steps into one workflow and demonstrates a full-stack application with role-based access, server-side validation, persistent domain models and a read-only Gemini assistant.
 
-The app records payments as Cash, UPI or Card. It does not connect to a payment gateway or process card payments.
+## Features
+
+- Owner, Manager, Cashier, Waiter and Kitchen Staff accounts with UI and API permission checks.
+- Restaurant dashboard, table status management, menu catalog and dine-in or takeaway orders.
+- Multiple sequential kitchen order tickets (KOTs) for an order as more items are added.
+- Kitchen queue transitions, waiter assignment and ready-ticket notifications.
+- Consolidated order bills with configurable discount, GST, currency, partial or full payments, and separately tracked tips.
+- Cash, UPI and Card payment records, cash tender/change, payment idempotency and settlement tracking. These are records in the application; no payment gateway or card processing is integrated.
+- Daily, weekly, monthly and custom-date reporting, with item lifecycle and sales detail restricted by role.
+- Optional, read-only Gemini Restaurant Assistant for current menu, order, kitchen, table, bill, payment and sales information.
+- MongoDB transactions, audit events, input validation and explicit legacy-state migration support.
 
 ## Technology
 
-| Area | Stack |
+| Area | Technologies |
 | --- | --- |
-| Frontend | React 19, React Router, Vite 8, JavaScript and CSS |
-| Runtime | Node.js 20.19+ or 22.12+ |
-| Backend | Express 4, JavaScript ES modules |
-| Database | MongoDB Atlas or another MongoDB replica set, with Mongoose 8 |
-| Authentication | bcrypt password hashes and signed JWT session cookies |
-| Optional AI | Google Gemini via `@google/genai` |
-| Backend tests | Node test runner, Supertest and `mongodb-memory-server` |
+| Frontend | React 19, React Router, Vite 8, JavaScript, CSS |
+| Backend | Node.js (20+), Express 4, JavaScript ES modules |
+| Data | MongoDB Atlas or another MongoDB replica set, Mongoose 8 |
+| Authentication | bcrypt password hashes, signed JWT in an HttpOnly session cookie |
+| Assistant | Google Gemini through `@google/genai` (optional) |
+| Backend tests | Node test runner, Supertest, `mongodb-memory-server` |
 
-## Structure
+## Architecture
+
+The repository root contains the React/Vite client. It calls the Express API under `/api`; in local development Vite proxies those requests to `http://localhost:5000`. The backend stores tables, menu items, users, orders, KOTs, bills, payments, settings, audit events and notifications in separate Mongoose collections. The frontend does not need to connect to MongoDB directly.
+
+The server validates order and payment operations, resolves order prices from the current menu, calculates bill totals, enforces state transitions and role permissions, and uses MongoDB transactions for related writes. `GET /api/state` is a read-only compatibility projection; ordinary client operations use domain endpoints. `RestaurantState` remains for an explicitly invoked legacy migration and is not required for normal startup.
+
+## Repository layout
 
 ```text
 restaurant-pos/
-├── frontend/
-│   ├── public/              # Static frontend assets
-│   ├── src/
-│   │   ├── Components/      # Shared interface components
-│   │   ├── Context/         # Authentication and restaurant state
-│   │   ├── Pages/           # Dashboard, orders, kitchen, billing, reports, etc.
-│   │   ├── auth/            # Frontend permission checks
-│   │   └── utils/           # Payment helpers
-│   ├── .env.example
-│   ├── eslint.config.js
-│   ├── index.html
-│   ├── package.json
-│   ├── package-lock.json
-│   └── vite.config.js
 ├── backend/
-│   ├── config/              # MongoDB connection
-│   ├── controllers/         # API handlers
-│   ├── middleware/          # Authentication and API permissions
-│   ├── models/              # Mongoose domain models
-│   ├── routes/              # REST API routes
-│   ├── scripts/             # Explicit legacy-state migration
-│   ├── services/            # Analytics, assistant and migration logic
-│   ├── tests/               # API and assistant tests
-│   ├── .env.example
-│   └── package.json
-├── screenshots/             # Genuine captures can be added here
-├── .gitignore
+│   ├── config/             # MongoDB connection
+│   ├── controllers/        # Auth, domain, KOT, staff, migration and assistant handlers
+│   ├── middleware/         # Authentication and API role permissions
+│   ├── models/             # Mongoose models for domain collections
+│   ├── routes/             # REST API routes
+│   ├── scripts/            # Explicit legacy-state migration command
+│   ├── services/           # Analytics, Gemini and migration services
+│   ├── tests/              # API integration and assistant tests
+│   ├── .env.example        # Backend configuration template
+│   ├── app.js
+│   └── server.js
+├── public/                 # Static frontend assets
+├── screenshots/            # Reserved for genuine application screenshots
+├── src/
+│   ├── Components/         # Shared UI components
+│   ├── Context/            # Authentication and restaurant API state
+│   ├── Pages/              # Dashboard, orders, kitchen, billing, reports, etc.
+│   ├── auth/               # Frontend route/feature permissions
+│   ├── utils/               # Payment helpers
+│   ├── api.js               # Fetch client
+│   ├── App.jsx              # Routes and protected layout
+│   └── main.jsx
+├── .env.example             # Optional frontend API URL
+├── package.json
 └── README.md
 ```
 
-## Architecture and workflow
+## Implemented modules
 
-Vite serves the frontend from `frontend/`. The client uses `/api` by default, and the Vite development server proxies those requests to `http://localhost:5000`. The Express backend handles authentication, validation, permissions, business rules and persistence. Tables, menu items, users, orders, KOTs, bills, payments, settings, notifications and audit events have separate Mongoose models. Related order, kitchen and billing writes use MongoDB transactions, so use a replica set such as Atlas.
+- **Dashboard:** operational overview; financial cards are limited to roles with `dashboard:financial`.
+- **Tables:** view and manage table names, capacity, active state and Available/Occupied/Reserved status. Active orders protect occupied tables from being freed or deactivated.
+- **Menu management:** browse menu items; Owner and Manager can add or edit items and set availability.
+- **Orders:** create dine-in and takeaway orders, assign waiters, add items to an active order and review order/KOT status.
+- **Kitchen:** process queued KOTs and view ticket history; kitchen staff receive a redacted operational view.
+- **Billing:** consolidated bill per order, discount controls, payment records, cash tender and change, and payment history.
+- **Reports:** collections, tips, order counts/status, outstanding balances and, for Owner/Manager, item lifecycle and GST summaries.
+- **Settings and staff:** restaurant details, role-appropriate settings, staff account management and password resets.
+- **AI Assistant:** read-only questions answered with database-backed tools when configured. It is available only to Owner and Manager.
 
-A staff member creates a dine-in or takeaway order. Dine-in orders require an active table with **Available** status. The backend looks up prices from the available menu and creates the first **Queued** KOT and a consolidated bill. Adding items to an active order creates another numbered KOT. Kitchen Staff move tickets from **Queued** to **Preparing** to **Ready**; permitted service staff can mark an assigned ticket **Served**. Tickets and item quantities can be cancelled with a reason by authorized roles.
+## Roles and permissions
 
-The bill reflects active KOT quantities. A fixed discount cannot exceed the subtotal; GST is applied to the discounted subtotal at the configured rate. Payments can be partial or full and use Cash, UPI or Card. Cash entries also track tender and change. Tips are separate from the bill balance and GST. These are application records only: the project does not contact a payment provider. Normal order completion requires KOTs to be served and the bill settled. A Manager or Owner can override completion with a reason. The table is released when the order is completed or cancelled and no other active dine-in order uses it; settlement alone does not close the order.
-
-Order statuses are **Open**, **In Progress**, **Completed** and **Cancelled**. KOT statuses are **Queued**, **Preparing**, **Ready**, **Served**, **Cancelled** and legacy **Closed**. A legacy Closed ticket is not counted as served.
-
-## Roles
-
-The frontend checks permissions before showing pages and actions. The API independently enforces role permissions and filters returned data.
+The client hides unavailable routes and actions, and the API independently enforces permissions. The following is a summary of the configured permissions and server-side data filtering.
 
 | Capability | Owner | Manager | Cashier | Waiter | Kitchen Staff |
 | --- | --- | --- | --- | --- | --- |
-| Dashboard | All, including financials | All, including financials | Financial dashboard | Assigned service activity | Redirected to kitchen |
-| Orders | Create, view and manage | Create, view and manage | View | Create; view assigned or created orders; add items to assigned orders | Active operational data; financial and contact fields are removed |
-| Kitchen | View, update, serve and cancel | View, update, serve and cancel | — | Serve assigned tickets | View and update Queued, Preparing and Ready tickets |
-| Tables and menu | View and manage | View and manage | View | View | — |
-| Billing | View and manage | View and manage | View and manage | — | — |
-| Reports | Full, including item-wise sales and GST summaries | Full, including item-wise sales and GST summaries | Limited summary | — | — |
-| Settings | Full, including tax and currency | Limited; GST number, GST rate and currency are hidden and cannot be changed | — | — | — |
-| Staff management | All supported roles | Waiter accounts; may reset Cashier, Waiter and Kitchen Staff passwords | — | — | — |
-| Gemini AI Assistant | Yes | Yes | — | — | — |
+| Dashboard | Full, including financials | Full, including financials | Financial dashboard | Assigned service activity | Redirected to kitchen |
+| Orders | Create, view and manage | Create, view and manage | View | Create; view assigned/created; add items to assigned active orders | Active operational orders, with financial/customer fields removed |
+| Kitchen tickets | View/update/cancel/serve | View/update/cancel/serve | No kitchen route | Serve own assigned KOTs | View; move Queued → Preparing → Ready |
+| Tables and menu | View and manage | View and manage | View | View | No table/menu route |
+| Billing and payment records | View and manage | View and manage | View and manage | No billing route/data projection | No billing route/data projection |
+| Reports | Full and itemwise | Full and itemwise | Limited summary; no itemwise report | No reports | No reports |
+| Settings | Full, including GST and currency | Limited; cannot view/change GST rate, GST number or currency | No settings route | No settings route | No settings route |
+| Staff accounts | Manage all supported roles | Waiter management; reset Cashier, Waiter and Kitchen Staff passwords | None | None | None |
+| Gemini Assistant | Yes | Yes | No | No | No |
 
-Kitchen Staff responses omit prices, bill/payment details and customer contact data. Waiters see only orders they created or were assigned. They do not have billing or report access. Cashier reports do not include item-wise sales or full GST summaries. The assistant is restricted by API permission to Owner and Manager.
+Cashier access is intentionally limited to billing and summary reporting; itemwise sales and full GST summaries are not included in the limited report permission. Waiter and Kitchen Staff roles cannot access report or billing routes. Kitchen Staff API responses omit bill/payment data, customer contact fields and item prices. Waiters are limited to their assigned/created orders and notifications. Owner-only settings expose GST number/rate and currency; Manager settings omit those financial configuration fields. The API remains the enforcement boundary even if a client route is called directly.
 
-## Authentication and security
+## Order, kitchen and billing workflow
 
-Passwords are stored as bcrypt hashes. Login issues a signed JWT in an HttpOnly, SameSite=Lax cookie; the cookie is Secure in production. The API verifies the JWT issuer and expiry, reloads the active user, and invalidates sessions when passwords or account activation change. For cookie-authenticated writes that include an `Origin` header, the API checks it against the configured allowlist. Server-side checks validate permissions, menu prices, workflow transitions, discounts, payment balances and idempotency keys. Gemini credentials stay on the backend; its assistant tools are read-only.
+1. Staff create an order as **Dine-in** or **Takeaway**. A dine-in order must use an active, Available table; the server marks it Occupied. Menu prices come from the server's current available catalog, not the submitted client price.
+2. Creation stores the first KOT as **Queued** and creates one consolidated bill for the order. A new KOT is created with the next sequence number whenever additional items are added to an active order with an open bill.
+3. Kitchen Staff or other permitted kitchen roles move a KOT from **Queued → Preparing → Ready**. Starting preparation moves the order from Open to In Progress. Authorized staff may cancel a KOT with a reason; permitted users may cancel individual KOT item quantities with a reason. A Waiter can mark a Ready KOT **Served** only for an order assigned to them.
+4. Ready tickets create notifications for the assigned Waiter (or an unassigned queue for management). Served and cancelled tickets are recorded in audit events. Legacy **Closed** KOTs can appear in history and are not treated as served.
+5. The bill consolidates active KOT quantities. A discount is a fixed amount capped at the subtotal. GST is calculated on the discounted subtotal using the configured tax rate (default 18%). The Owner controls GST/currency configuration; payment tips are stored separately and do not change the bill balance or GST.
+6. Record full or partial payments using **Cash**, **UPI** or **Card**. Completed payments reduce the outstanding bill balance. Cash records tendered amount and change. Payment writes require an idempotency key; these records do not charge a real card or contact a payment network.
+7. The bill is settled when completed bill-applied payments cover the total, or when a zero-balance bill is explicitly settled. Normal order completion requires all KOTs served and the bill settled. A Manager/Owner can override completion with a reason. The table is released after the order is closed (completed or cancelled) and no other active dine-in order uses it; full settlement alone does not close the order.
+8. Reports distinguish completed payment collections and tips from billed totals. Full reports include GST and item/KOT lifecycle details; limited reports omit item-level analysis.
+
+Order statuses are **Open**, **In Progress**, **Completed** and **Cancelled**. KOT statuses are **Queued**, **Preparing**, **Ready**, **Served**, **Cancelled** and legacy **Closed**.
+
+## Screenshots and demo
+
+No application screenshots or demo video are included yet. Add genuine captures to [`screenshots/`](screenshots/README.md) and link them here when available.
+
+| Screen | Screenshot |
+| --- | --- |
+| Dashboard | Not yet added |
+| Orders | Not yet added |
+| Tables | Not yet added |
+| Menu Management | Not yet added |
+| Kitchen Display | Not yet added |
+| Billing | Not yet added |
+| Reports | Not yet added |
+| Settings | Not yet added |
+| AI Restaurant Assistant | Not yet added |
+
+**Demo video:** reserved for a future walkthrough.
 
 ## Run locally
 
 ### Requirements
 
-- Node.js 20.19 or newer, or 22.12 or newer, and npm.
-- A MongoDB Atlas database or another MongoDB replica set. Standalone MongoDB does not support the transactions used by the app.
-- A Gemini API key only if you want to use the assistant.
+- Node.js 20 or newer and npm.
+- A MongoDB Atlas database or another MongoDB replica set. Order, KOT, billing and payment operations use multi-document transactions; a standalone MongoDB server is not sufficient.
+- A Google Gemini API key only if you want to use the optional AI Assistant.
 
-### 1. Clone and install dependencies
+### 1. Clone and install
 
 ```bash
 git clone https://github.com/VarshaVarma-09/restaurant-pos-frontend.git
 cd restaurant-pos-frontend
-cd frontend
-npm ci
-cd ../backend
-npm ci
+npm install
+cd backend
+npm install
 cd ..
 ```
 
-In Windows PowerShell, run the same `cd` and `npm ci` commands one line at a time. Frontend and backend dependencies are installed separately.
+The existing GitHub remote is named for the original frontend repository; it contains the combined project after publication. Do not assume a clone URL will change as part of these local edits.
 
-### 2. Configure the backend
+### 2. Configure MongoDB and backend environment
 
-Copy the template to a local file and edit it with your own Atlas URI, JWT secret and Owner credentials.
-
-Git Bash:
+Copy the backend template and edit the local copy:
 
 ```bash
 cp backend/.env.example backend/.env
 ```
 
-PowerShell:
+On Windows PowerShell:
 
 ```powershell
 Copy-Item backend/.env.example backend/.env
 ```
 
-Do not commit `backend/.env`. The `.gitignore` excludes local environment files.
+Set the Atlas connection string (`MONGODB_URI`) using your own database username, password, cluster and database name. In Atlas, create a database user and allowlist the machine's network address under Network Access. Do not paste the URI into source files or commit `backend/.env`.
 
 | Variable | Required | Purpose |
 | --- | --- | --- |
-| `MONGODB_URI` | Yes | MongoDB connection URI. Configure a database user and Atlas Network Access allowlist. |
-| `JWT_SECRET` | Yes | JWT signing secret, at least 32 characters. Replace the example value with a long random secret. |
 | `PORT` | No | API port; defaults to `5000`. |
-| `MONGODB_SERVER_SELECTION_TIMEOUT_MS` | No | Connection selection timeout; defaults to `10000` milliseconds. |
-| `JWT_EXPIRES_IN` | No | Session lifetime such as `8h`; defaults to `8h`. |
-| `CLIENT_ORIGIN` | Local default works | Allowed frontend origin(s); local default is `http://localhost:5173`. |
-| `BOOTSTRAP_OWNER_USERNAME` | For first Owner | Username for the bootstrap account; the backend normalizes it to lowercase. |
-| `BOOTSTRAP_OWNER_PASSWORD` | For first Owner | Your private initial Owner password. Startup requires at least 10 characters and rejects the literal example value. The login endpoint accepts passwords up to 128 characters; choose 10–128 characters for a usable login. |
-| `GEMINI_API_KEY` | Optional | Your server-side Gemini API key. Required only for the AI Assistant. |
-| `GEMINI_MODEL` | Optional | Gemini model identifier; set it when enabling the assistant. |
-| `SEED_DEFAULT_BUSINESS_DATA` | Optional | Set to `true` to add six sample tables and four menu items only when those collections are empty. |
+| `MONGODB_URI` | Yes | MongoDB connection URI. |
+| `MONGODB_SERVER_SELECTION_TIMEOUT_MS` | No | MongoDB server selection timeout in milliseconds; defaults to `10000`. |
+| `JWT_SECRET` | Yes | Private signing secret, at least 32 characters. Replace the template value with a long random secret. |
+| `JWT_EXPIRES_IN` | No | JWT/session duration such as `8h`; defaults to `8h`. |
+| `CLIENT_ORIGIN` | Local default works | Comma-separated allowed frontend origins; local default is `http://localhost:5173`. |
+| `BOOTSTRAP_OWNER_USERNAME` | Recommended for first startup | Username for initial Owner creation. Use a username you choose. |
+| `BOOTSTRAP_OWNER_PASSWORD` | Recommended for first startup | Initial Owner password, 10–128 characters. Choose your own private password; no credentials are published here. |
+| `GEMINI_API_KEY` | No | Server-side Gemini API key. Needed only for the Assistant. Never use a `VITE_` variable for this secret. |
+| `GEMINI_MODEL` | If Assistant enabled | Gemini model identifier used by the backend. Choose a model enabled for your API key. |
+| `SEED_DEFAULT_BUSINESS_DATA` | No | Set to `true` only to create built-in example tables and menu items when those collections are empty. Unset by default. |
+| `NODE_ENV` | No | Set to `production` only for a production-mode configuration; that mode requires `CLIENT_ORIGIN` and uses Secure cookies. This project is documented for local use. |
 
-The Owner account is created at startup only when both bootstrap values are set and that username does not already exist. Startup never overwrites an existing Owner password. Anyone running the project locally must configure their own username and password; this repository contains no demo credentials. Sample tables/menu data are optional and are not seeded by default.
+### 3. Create your own initial Owner login
 
-### 3. Optional frontend configuration
+At server startup, if both bootstrap variables are present and that username does not already exist, the backend creates an Owner account and hashes the password with bcrypt. The username is normalized to lowercase. The server rejects the example password and passwords shorter than 10 characters. Startup does not replace an existing account's password. Recruiters should create their own credentials in `backend/.env`; there are no shared demo credentials.
 
-The frontend uses `/api` by default, so the local Vite proxy needs no additional setting. To use a different API base, copy `frontend/.env.example` to `frontend/.env` and set `VITE_API_URL`. Vite variables are bundled into the browser and must not contain secrets.
+Set `SEED_DEFAULT_BUSINESS_DATA=true` if you want the supported built-in sample of six tables and four menu entries. It only inserts these when the corresponding collections are empty. Otherwise, create your own tables/menu in the app. No other seed mechanism is provided.
 
-Git Bash:
+After the Owner signs in, use **Settings → staff accounts** to add Manager, Cashier, Waiter or Kitchen Staff users (Owner only). A Manager can manage Waiter accounts. Choose unique usernames and temporary passwords; no demo accounts are pre-created.
 
-```bash
-cp frontend/.env.example frontend/.env
-```
+### 4. Configure and run the frontend
 
-PowerShell:
+The client defaults to `/api`, and Vite proxies that path to the local backend. No frontend environment file is needed for the default local setup. To explicitly set the API base URL, copy the root `.env.example` to `.env` and set `VITE_API_URL`. Vite variables are public client configuration and must never contain secrets.
 
-```powershell
-Copy-Item frontend/.env.example frontend/.env
-```
-
-### 4. Start the app
-
-Run the backend in one terminal:
+Start the API in one terminal:
 
 ```bash
 cd backend
 npm run dev
 ```
 
-Run the frontend in a second terminal:
+Start the frontend in a second terminal from the repository root:
 
 ```bash
-cd frontend
 npm run dev
 ```
 
-Open the URL printed by Vite, normally `http://localhost:5173`, and log in with the Owner credentials you configured. In **Settings**, the Owner can create Manager, Cashier, Waiter and Kitchen Staff accounts. A Manager can create and manage Waiter accounts.
-
-Staff account creation requires a password of **10–128 characters**. Staff password resets through `PATCH /api/users/:id/password` accept **8–128 characters** and require a matching confirmation. A separate Owner-only password change through `PATCH /api/users/:id` requires 10–128 characters. Owner and Manager reset access follows the role table above.
-
-### Environment reference
-
-The backend template also includes `NODE_ENV` as an optional production-mode setting. Production mode requires a configured `CLIENT_ORIGIN` and enables Secure session cookies. This README covers local development only. The frontend API URL template is at `frontend/.env.example`.
+Open the local URL printed by Vite (normally `http://localhost:5173`), then log in with the Owner username and password you configured. Use Settings to create staff accounts and sign out/in to explore each role.
 
 ## Verification
 
-Run frontend checks from `frontend/`:
+Run these from the repository root unless indicated otherwise:
 
 ```bash
 npm run lint
 npm run build
 ```
 
-Run backend tests from `backend/`:
+Run backend integration tests from `backend/`:
 
 ```bash
 npm test
 ```
 
-The backend suite uses `mongodb-memory-server` to start a temporary replica set; its first run may download a MongoDB test binary. It does not test Atlas credentials or network allowlisting. Do not point tests at a real restaurant database.
+The integration suite starts a temporary MongoDB replica set using `mongodb-memory-server`; its first run may need to download a MongoDB test binary. It does not validate Atlas credentials, Atlas network allowlisting or data in your own database. Never point the test suite at a production database.
 
-## Limitations and troubleshooting
+## Troubleshooting
 
-- The app has no hosted deployment or demo video. It is a portfolio project and has not been assessed for production operation.
-- Payments are recorded in the app; no card processor, bank/UPI integration or refund flow is connected.
-- The Gemini AI Assistant is optional, read-only, and unavailable until the backend has a valid `GEMINI_API_KEY` and `GEMINI_MODEL`.
-- If MongoDB times out, check the URI, database user and Atlas Network Access allowlist. Use a replica set for transactional workflows.
-- If the frontend cannot reach the API, run the backend on port 5000 and Vite from `frontend/` on port 5173. Check that `frontend/vite.config.js` still proxies `/api` to `http://localhost:5000`.
-- If Owner login fails, check both bootstrap variables and confirm the username exists and is active. Bootstrap only creates a missing account; it does not reset passwords.
-- If no tables or menu items appear, create them in the app or enable the documented sample-data option for empty collections.
+- **MongoDB connection timeout:** verify `MONGODB_URI`, the Atlas database user's credentials, and the current machine's Network Access allowlist entry.
+- **Transaction/replica-set errors:** use Atlas or a MongoDB replica set rather than a standalone local MongoDB server.
+- **Owner login does not work:** verify both bootstrap variables, password length, username spelling/case, and that the user is active. Bootstrap only creates a missing user; it does not reset an existing password.
+- **Frontend cannot reach the API:** start the backend on port 5000, start Vite on port 5173, and check that the Vite `/api` proxy is available. If you set a different API origin, also configure `CLIENT_ORIGIN` and the root `VITE_API_URL`.
+- **Assistant is unavailable:** verify `GEMINI_API_KEY` and `GEMINI_MODEL` in `backend/.env`, then restart the backend. Core POS features do not require Gemini.
+- **Tables or menu are empty:** add them through the UI or explicitly enable the supported default sample data in an empty collection.
 
-## Screenshots
+## Security notes
 
-There are no genuine application screenshots yet. The root `screenshots/` directory contains a note for adding real captures later. No screenshots or demo video are presented as available.
+- `.env` files, dependency folders and build output are excluded by `.gitignore`; use only the example files for published configuration.
+- Passwords are stored as bcrypt hashes. Session cookies are HttpOnly, SameSite=Lax and Secure in production; JWTs are issuer/expiry checked and active users are reloaded for requests.
+- Cookie-authenticated writes check the configured Origin. API routes enforce role permissions and validate server-side prices, totals, payment balances and workflow transitions.
+- The Gemini key is read by the backend only. Assistant tools are read-only, constrained to restaurant data and do not provide customer contact details or credentials.
+- This is a portfolio application and has not been deployed or assessed for production use. Payment methods represent recorded transactions; no payment processor is connected.
+
+## Future enhancements
+
+- Add verified screenshots and a short demo walkthrough.
+- Add automated frontend component and end-to-end workflow coverage.
+- Explore a real payment provider integration with its required compliance and reconciliation flows.
+- Improve deployment and operational documentation if the project later moves beyond local portfolio use.
 
 ## Author
 
-Created by **Varsha Varma Pothuri**. [GitHub profile](https://github.com/VarshaVarma-09).
+Created by **Varsha Varma**. See the GitHub profile at [VarshaVarma-09](https://github.com/VarshaVarma-09).
+
+## Repository presentation
+
+Suggested repository description: **Full-stack Restaurant POS and Billing System with RBAC, order management, kitchen workflows, billing, analytics and Gemini AI integration.**
+
+Suggested GitHub topics: `react`, `nodejs`, `express`, `mongodb`, `mongoose`, `restaurant-pos`, `billing-system`, `role-based-access-control`, `full-stack`.
+
+
+---
+
+## Screenshots
+
+### Login Page
+![Login Page](screenshots/loginpage.png)
+
+### owner dashboard
+![ownerDashboard](screenshots/ownerDashboard.png)
+
+### Reports
+![Reports](screenshots/Reports.png)
+
+### SalesReport in same ReportPage
+![SalesReport](screenshots/SalesReport.png)
+
+### Settings
+![settings](screenshots/settings.png)
+
+### AI Assistant
+![AIassistant](screenshots/AIassistant.png)
+
+### waiterDashBoard
+![waiterDashboard](screenshots/ownerDashboard.png)
+
+### Tables
+![Tables](screenshots/Tables.png)
+
+### kitchen dashboard
+![kitchen](screenshots/Kitchen.png)
+
+### Order Page
+![orderPage](screenshots/orderPage.png)
