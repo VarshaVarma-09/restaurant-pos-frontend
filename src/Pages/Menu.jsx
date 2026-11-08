@@ -22,7 +22,7 @@ function Menu() {
         (availability === "All" || (availability === "Available" ? item.available !== false : item.available === false))
     );
 
-    function submitItem(event) {
+    async function submitItem(event) {
         event.preventDefault();
         if (!canManage) return;
         const name = form.name.trim();
@@ -32,7 +32,7 @@ function Menu() {
             return;
         }
         try {
-            saveMenuItem(editingId, { name, description: form.description, category: form.category, price });
+            await saveMenuItem(editingId, { name, description: form.description, category: form.category, price });
             setFeedback({ type: "success", message: editingId !== null
                 ? "Menu item updated. Existing order snapshots retain their original names and prices."
                 : "Menu item added." });
@@ -50,10 +50,10 @@ function Menu() {
         setForm({ name: item.name, description: item.description || "", category: item.category || "", price: String(item.price) });
     }
 
-    function toggleAvailability(item) {
+    async function toggleAvailability(item) {
         if (!canManage) return;
         try {
-            toggleMenuItemAvailability(item.id);
+            await toggleMenuItemAvailability(item.id);
             setFeedback({ type: "success", message: item.available === false ? "Menu item reactivated." : "Menu item deactivated; existing snapshots are unchanged." });
         } catch (error) {
             setFeedback({ type: "error", message: error?.message || "Unable to update menu item availability." });

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useRestaurant } from "../Context/RestaurantContext";
+import { useAuth } from "../Context/useAuth";
 
 function getOrderItemKey(item) {
     return item.menuItemId ?? item.name;
@@ -14,6 +15,7 @@ function formatRupees(amount, currency = "INR") {
 
 function NewOrder() {
     const { tables, menuItems, createOrder, restaurantSettings } = useRestaurant();
+    const { user } = useAuth();
     const currency = restaurantSettings.currency || "INR";
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
@@ -180,7 +182,7 @@ function NewOrder() {
 
             setSuccessMessage("Order created. Opening Billing…");
             redirectTimeout.current = window.setTimeout(() => {
-                navigate(`/billing?orderId=${encodeURIComponent(createdOrder.id)}`);
+                navigate(`${user?.role === "Waiter" ? "/orders" : "/billing"}?orderId=${encodeURIComponent(createdOrder.id)}`);
             }, 700);
         } catch (error) {
             submitInProgress.current = false;

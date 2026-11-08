@@ -12,6 +12,7 @@ import Settings from "./Pages/Settings";
 import NewOrder from "./Pages/NewOrder";
 import Login from "./Pages/Login";
 import Kitchen from "./Pages/Kitchen";
+import AIAssistant from "./Pages/AIAssistant";
 import { BrowserRouter, Navigate, NavLink, Route, Routes, useLocation } from "react-router-dom";
 import { AuthProvider } from "./Context/AuthProvider";
 import { useAuth } from "./Context/useAuth";
@@ -20,8 +21,12 @@ import { useRestaurant } from "./Context/RestaurantContext";
 
 function ProtectedRoute({ children }) {
     const location = useLocation();
-    const { user, sessionMessage } = useAuth();
+    const { user, sessionMessage, authReady } = useAuth();
+    const { remoteStateReady, remoteStateError, retryRemoteState } = useRestaurant();
+    if (!authReady) return <main className="page" aria-busy="true">Loading session…</main>;
     if (!user) return <Navigate to="/login" replace state={{ from: location, ...(sessionMessage ? { sessionMessage } : {}) }} />;
+    if (remoteStateError) return <main className="page" role="alert"><h1>Restaurant data unavailable</h1><p>{remoteStateError}</p><button type="button" onClick={retryRemoteState}>Retry loading data</button></main>;
+    if (!remoteStateReady) return <main className="page" aria-busy="true">Loading restaurant data…</main>;
     if (!canAccessRoute(user.role, location.pathname)) {
         return <main className="page"><h1>Access denied</h1><p>Your role does not have access to this page.</p><NavLink to="/">Return to dashboard</NavLink></main>;
     }
@@ -45,6 +50,7 @@ function Layout() {
                 <Route path="/billing" element={<ProtectedRoute><Billing /></ProtectedRoute>} />
                 <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
                 <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+                <Route path="/assistant" element={<ProtectedRoute><AIAssistant /></ProtectedRoute>} />
                 <Route path="/orders/new" element={<ProtectedRoute><NewOrder /></ProtectedRoute>} />
                 <Route path="/login" element={<Login />} />
                 <Route path="*" element={<Navigate to="/" replace />} />

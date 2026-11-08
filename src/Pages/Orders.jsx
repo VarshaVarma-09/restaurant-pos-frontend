@@ -3,6 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { useRestaurant } from "../Context/RestaurantContext";
 import { getCompletedPaymentTotal } from "../utils/payments";
 import { useAuth } from "../Context/useAuth";
+import StatusBadge from "../Components/StatusBadge";
 
 function formatRupees(amount, currency = "INR") {
     const value = Number(amount);
@@ -231,14 +232,14 @@ function Orders() {
         }
     }
 
-    function markKotServed(order, kot) {
+    async function markKotServed(order, kot) {
         const orderKey = String(order.id);
         if (busyOrderIds.current.has(orderKey)) return;
         busyOrderIds.current.add(orderKey);
         setOrderBusy(order.id, true);
         clearOrderFeedback(order.id);
         try {
-            serveKot(kot.id);
+            await serveKot(kot.id);
             setOrderFeedback(order.id, "success", `KOT #${kot.sequence ?? kot.kotNumber ?? ""} marked as Served.`);
         } catch (error) {
             setOrderFeedback(order.id, "error", error?.message || "Unable to mark this KOT as Served.");
@@ -386,8 +387,8 @@ function Orders() {
                                 {isDineIn && (
                                     <p><strong>Table:</strong> {order.tableId ?? order.table ?? "Not assigned"}</p>
                                 )}
-                                <p><strong>Order status:</strong> {order.status || "Unknown"}</p>
-                                {can("billing:view") && <p><strong>Payment status:</strong> {order.paymentStatus || "Unpaid"}</p>}
+                                <p className="status-line"><strong>Order status</strong><StatusBadge status={order.status} /></p>
+                                {can("billing:view") && <p className="status-line"><strong>Payment</strong><StatusBadge status={order.paymentStatus || "Unpaid"} /></p>}
                                 {order.status === "Completed" && <p className="order-section">
                                     <strong>Completion:</strong> {order.completionType || "Legacy"}{order.completionReason ? ` · ${order.completionReason}` : ""}
                                     <br /><strong>Completed:</strong> {formatDateTime(order.completedAt)}{order.completedBy?.name ? ` · ${order.completedBy.name}` : ""}
@@ -401,9 +402,9 @@ function Orders() {
                                 <p><strong>Assigned waiter:</strong> {order.assignedWaiter?.name || "Unassigned"}</p>
                                 {can("waiters:manage") && <label className="order-waiter-assignment" htmlFor={`order-waiter-${order.id}`}>
                                     Assign waiter
-                                    <select id={`order-waiter-${order.id}`} value={order.assignedWaiter?.userId || ""} onChange={event => {
+                                    <select id={`order-waiter-${order.id}`} value={order.assignedWaiter?.userId || ""} onChange={async event => {
                                         try {
-                                            assignOrderWaiter(order.id, event.target.value || null);
+                                            await assignOrderWaiter(order.id, event.target.value || null);
                                             setOrderFeedback(order.id, "success", event.target.value ? "Waiter assignment updated." : "Order marked unassigned.");
                                         } catch (error) {
                                             setOrderFeedback(order.id, "error", error.message || "Unable to update the Waiter assignment.");
@@ -462,7 +463,7 @@ function Orders() {
                                                         <h4>
                                                             KOT #{sequence} — {sequence === 1 ? "Original KOT" : "Additional KOT"}
                                                         </h4>
-                                                        <p><strong>Status:</strong> {kot.status || "Unknown"}</p>
+                                                        <p className="status-line"><strong>KOT status</strong><StatusBadge status={kot.status} /></p>
                                                         {kot.status === "Served" && <p><strong>Served:</strong> {formatDateTime(kot.servedAt)}{kot.servedBy?.name ? ` · ${kot.servedBy.name}` : ""}</p>}
                                                         {kot.status === "Ready" && ["Open", "In Progress"].includes(order.status) &&
                                                             can("kitchen:serve") &&

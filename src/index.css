@@ -2,42 +2,42 @@
 
 :root {
   font-family: "DM Sans", "Segoe UI", sans-serif;
-  color: #17231f;
-  background: #f5f7f4;
+  color: #29332e;
+  background: #f7f6f2;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 
-  --color-primary: #176b52;
-  --color-primary-hover: #105940;
-  --color-primary-soft: #e8f3ed;
-  --color-accent: #d99a42;
-  --color-success: #247a4a;
-  --color-success-soft: #e8f4eb;
-  --color-warning: #a76613;
-  --color-warning-soft: #fff3df;
-  --color-danger: #b7473d;
-  --color-danger-soft: #fbecea;
+  --color-primary: #557761;
+  --color-primary-hover: #405f4c;
+  --color-primary-soft: #edf2ed;
+  --color-accent: #b98262;
+  --color-success: #4c7058;
+  --color-success-soft: #edf3ed;
+  --color-warning: #916b3d;
+  --color-warning-soft: #f7f1e7;
+  --color-danger: #a85e54;
+  --color-danger-soft: #f7eeeb;
 
-  --color-page: #f5f7f4;
+  --color-page: #f7f6f2;
   --color-surface: #ffffff;
-  --color-surface-muted: #f8faf8;
-  --color-border: #e4e9e5;
-  --color-border-strong: #cbd5ce;
-  --color-text: #17231f;
-  --color-text-soft: #53625b;
-  --color-muted: #849189;
-  --color-sidebar: #173d32;
-  --color-sidebar-muted: #b4c9bd;
+  --color-surface-muted: #fbfaf7;
+  --color-border: #e8e6df;
+  --color-border-strong: #d8d6cd;
+  --color-text: #29332e;
+  --color-text-soft: #4d5a52;
+  --color-muted: #738078;
+  --color-sidebar: #283e33;
+  --color-sidebar-muted: #c3cec5;
 
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 18px;
+  --radius-sm: 9px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
 
-  --shadow-sm: 0 2px 8px rgb(24 47 36 / 5%);
-  --shadow-md: 0 12px 28px rgb(24 47 36 / 8%);
-  --shadow-lg: 0 24px 60px rgb(24 47 36 / 15%);
+  --shadow-sm: 0 2px 8px rgb(41 51 46 / 4%);
+  --shadow-md: 0 8px 22px rgb(41 51 46 / 6%);
+  --shadow-lg: 0 18px 42px rgb(41 51 46 / 10%);
 
   --sidebar-width: 252px;
   --content-max: 1440px;
@@ -109,7 +109,7 @@ svg {
 }
 
 :focus-visible {
-  outline: 3px solid rgb(217 154 66 / 65%);
+  outline: 3px solid rgb(185 130 98 / 55%);
   outline-offset: 3px;
 }
 

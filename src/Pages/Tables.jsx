@@ -29,7 +29,7 @@ function Tables() {
             String(order.tableId ?? order.table) === String(table.id));
     }
 
-    function submitTable(event) {
+    async function submitTable(event) {
         event.preventDefault();
         if (!canManage) return;
         const name = form.name.trim();
@@ -40,10 +40,10 @@ function Tables() {
         }
         try {
             if (editingId !== null) {
-                updateRestaurantTable(editingId, { name, capacity });
+                await updateRestaurantTable(editingId, { name, capacity });
                 showFeedback("Table updated.");
             } else {
-                addRestaurantTable({ name, capacity });
+                await addRestaurantTable({ name, capacity });
                 showFeedback("Table added.");
             }
         } catch (error) {
@@ -54,28 +54,28 @@ function Tables() {
         setEditingId(null);
     }
 
-    function setTableStatus(table, status) {
+    async function setTableStatus(table, status) {
         if (!canManage) return;
         if (activeOrderForTable(table)) {
             showFeedback("This table has an open dine-in order. Complete or cancel the order to release it.", "error");
             return;
         }
         try {
-            setRestaurantTableStatus(table.id, status);
+            await setRestaurantTableStatus(table.id, status);
             showFeedback(`Table ${table.name ?? table.id} is now ${status.toLowerCase()}.`);
         } catch (error) {
             showFeedback(error?.message || "Unable to update this table status.", "error");
         }
     }
 
-    function toggleActive(table) {
+    async function toggleActive(table) {
         if (!canManage) return;
         if (table.active !== false && activeOrderForTable(table)) {
             showFeedback("A table with an active dine-in order cannot be deactivated.", "error");
             return;
         }
         try {
-            toggleRestaurantTableActive(table.id);
+            await toggleRestaurantTableActive(table.id);
             showFeedback(table.active === false ? "Table reactivated." : "Table deactivated.");
         } catch (error) {
             showFeedback(error?.message || "Unable to update this table.", "error");

@@ -5,6 +5,7 @@ import { useRestaurant } from "../Context/RestaurantContext";
 import { getCompletedPaymentTotal } from "../utils/payments";
 import { getPaymentAppliedAmount } from "../utils/payments";
 import { useAuth } from "../Context/useAuth";
+import StatusBadge from "../Components/StatusBadge";
 
 function money(value, currency = "INR") {
     return new Intl.NumberFormat("en-IN", { style: "currency", currency }).format(Number(value) || 0);
@@ -21,6 +22,7 @@ function Dashboard() {
         ? orders.filter(order => order.assignedWaiter?.userId === user?.id)
         : orders;
     const today = new Date().toLocaleDateString("en-CA");
+    const displayDate = new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long" });
     const todayOrders = assignedOrders.filter(order => (order.createdAt || "").slice(0, 10) === today);
     const todaySales = payments.filter(payment => payment.status === "Completed" &&
         (payment.timestamp || payment.createdAt || "").slice(0, 10) === today)
@@ -54,11 +56,11 @@ function Dashboard() {
         ? kots.filter(kot => kot.status === "Served" && assignedOrders.some(order => order.id === kot.orderId)).slice(-8).reverse()
         : [];
 
-    function confirmKotServed(kot) {
+    async function confirmKotServed(kot) {
         setServiceFeedback(null);
         setServingKotId(kot.id);
         try {
-            serveKot(kot.id);
+            await serveKot(kot.id);
             setServiceFeedback({ type: "success", message: `KOT #${kot.sequence ?? kot.kotNumber ?? ""} marked as Served.` });
         } catch (error) {
             setServiceFeedback({ type: "error", message: error?.message || "Unable to confirm service." });
@@ -69,8 +71,14 @@ function Dashboard() {
 
     return (
         <main className="dashboard">
-            <h1>Dashboard</h1>
-            <p>{showFinancials ? "Live restaurant activity and today’s collections." : "Your assigned service activity and table information."}</p>
+            <header className="dashboard-heading">
+                <div>
+                    <p className="dashboard-eyebrow">Service overview · {displayDate}</p>
+                    <h1>Welcome, {user?.name || user?.role || "Team"}</h1>
+                    <p>{showFinancials ? "Here is how your restaurant is moving today." : "Here is your assigned service activity for today."}</p>
+                </div>
+                {can("orders:create") && <Link className="dashboard-primary-action" to="/orders/new"><span aria-hidden="true">+</span> New order</Link>}
+            </header>
             <div className="dashboard-cards">
                 {showFinancials && <DashboardCard title="Today's Collections" value={money(todaySales, restaurantSettings.currency)} />}
                 <DashboardCard title="Today's Orders" value={todayOrders.length} />
@@ -97,7 +105,7 @@ function Dashboard() {
                 {recentOrders.length === 0 ? <p className="empty-state">No orders have been created yet.</p> : <div className="recent-order-list">
                     {recentOrders.map(order => <Link className="recent-order-row" key={order.id} to={`/orders?orderId=${encodeURIComponent(order.id)}`}>
                         <span><strong>#{order.orderNumber ?? order.id}</strong><small>{order.customerName || "Customer not provided"} · {order.orderType || "Unknown"}</small></span>
-                        <span className="recent-order-state">{order.status}{showFinancials ? ` · ${order.paymentStatus || "Unpaid"}` : ""}</span>
+                        <span className="recent-order-state"><StatusBadge status={order.status} />{showFinancials && <StatusBadge status={order.paymentStatus || "Unpaid"} />}</span>
                     </Link>)}
                 </div>}
             </section>
@@ -116,8 +124,8 @@ function Dashboard() {
                                 <p>{(notification.items || []).map(item => `${item.name} × ${item.quantity}${item.notes ? ` · ${item.notes}` : ""}`).join(", ")}</p>
                                 <small>{new Date(notification.createdAt).toLocaleString()}</small>
                             </div>
-                            {!notification.readAt && (can("notifications:own") || notification.recipientUserId == null) && <button type="button" onClick={() => {
-                                try { markNotificationRead(notification.id); } catch { /* The Context enforces ownership. */ }
+                            {!notification.readAt && (can("notifications:own") || notification.recipientUserId == null) && <button type="button" onClick={async () => {
+                                try { await markNotificationRead(notification.id); } catch { /* The Context enforces ownership. */ }
                             }}>Mark read</button>}
                         </article>)}
                         {unassignedReadyKots.filter(kot => !personalNotifications.some(item => item.kotId === kot.id)).map(kot => {

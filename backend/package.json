@@ -1,0 +1,28 @@
+{
+  "name": "restaurant-pos-backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "nodemon server.js",
+    "start": "node server.js",
+    "test": "node --test tests/*.test.js",
+    "migrate:legacy": "node scripts/migrateLegacyState.js"
+  },
+  "dependencies": {
+    "@google/genai": "^3.0.0",
+    "bcrypt": "^6.0.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "express-validator": "^7.2.1",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.9.5",
+    "openai": "^7.53.0"
+  },
+  "devDependencies": {
+    "mongodb-memory-server": "^11.3.0",
+    "nodemon": "^3.1.9",
+    "supertest": "^7.3.2"
+  }
+}

@@ -30,6 +30,7 @@ function Billing() {
     const [paymentDrafts, setPaymentDrafts] = useState({});
     const [feedback, setFeedback] = useState({});
     const paymentSubmissionLocks = useRef(new Set());
+    const paymentRequestKeys = useRef(new Map());
     const [submittingPayments, setSubmittingPayments] = useState({});
     const currency = restaurantSettings.currency || "INR";
     const focusedOrderId = searchParams.get("orderId");
@@ -64,9 +65,9 @@ function Billing() {
         setFeedback(previous => ({ ...previous, [id]: { type, message } }));
     }
 
-    function applyDiscount(bill) {
+    async function applyDiscount(bill) {
         try {
-            setBillDiscount(bill.orderId, discountDrafts[bill.id] ?? bill.discount ?? 0);
+            await setBillDiscount(bill.orderId, discountDrafts[bill.id] ?? bill.discount ?? 0);
             setBillFeedback(bill.id, "success", "Discount updated.");
         } catch (error) {
             setBillFeedback(bill.id, "error", error.message || "Unable to update discount.");
@@ -85,9 +86,12 @@ function Billing() {
         try {
             // Yield so React can render the disabled state before the synchronous local transaction runs.
             await new Promise(resolve => window.setTimeout(resolve, 0));
-            const payment = recordPayment(bill.orderId, {
+            const idempotencyKey = paymentRequestKeys.current.get(bill.id) || globalThis.crypto?.randomUUID?.() || `pay_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+            paymentRequestKeys.current.set(bill.id, idempotencyKey);
+            const payment = await recordPayment(bill.orderId, {
                 amountApplied,
                 tipAmount,
+                idempotencyKey,
                 mode: draft.mode || "Full",
                 method: draft.method,
                 status: draft.status || "Completed",
@@ -95,6 +99,7 @@ function Billing() {
                     ? { cashTendered: draft.cashTendered }
                     : {})
             });
+            paymentRequestKeys.current.delete(bill.id);
             setBillFeedback(bill.id, "success", `${payment.status} payment recorded: ${money(payment.amountApplied, currency)} applied to bill and ${money(payment.tipAmount, currency)} tip.`);
             setPaymentDrafts(previous => ({
                 ...previous,
@@ -113,19 +118,19 @@ function Billing() {
         }
     }
 
-    function voidBill(bill) {
+    async function voidBill(bill) {
         if (!window.confirm("Void this cancelled order's bill? This cannot be reversed.")) return;
         try {
-            updateBillStatus(bill.id, "Void");
+            await updateBillStatus(bill.id, "Void");
             setBillFeedback(bill.id, "success", "Bill voided.");
         } catch (error) {
             setBillFeedback(bill.id, "error", error.message || "Unable to void bill.");
         }
     }
 
-    function settleZeroBalance(bill) {
+    async function settleZeroBalance(bill) {
         try {
-            settleZeroBalanceBill(bill.id);
+            await settleZeroBalanceBill(bill.id);
             setBillFeedback(bill.id, "success", "Zero-balance bill settled. No payment transaction was recorded.");
         } catch (error) {
             setBillFeedback(bill.id, "error", error.message || "Unable to settle this zero-balance bill.");

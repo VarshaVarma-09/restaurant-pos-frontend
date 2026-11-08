@@ -1,0 +1,2 @@
+import mongoose from 'mongoose';
+export default mongoose.model('AuditEvent', new mongoose.Schema({ id: { type: String, required: true, unique: true }, orderId: { type: String, required: true, index: true }, kotId: String, action: { type: String, required: true }, reason: String, previousStatus: String, newStatus: String, details: mongoose.Schema.Types.Mixed, actor: mongoose.Schema.Types.Mixed, createdAt: { type: Date, default: Date.now } }, { timestamps: false }));

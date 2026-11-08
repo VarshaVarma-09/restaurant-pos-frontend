@@ -1,12 +1,12 @@
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { getStoredUser, hasPermission } from "../auth/permissions";
 import { getCompletedPaymentTotal } from "../utils/payments";
+import { apiRequest } from "../api";
 
 const RestaurantContext = createContext(null);
 
 const GST_RATE = 0.18;
 const ACTIVE_ORDER_STATUSES = ["Open", "In Progress"];
-const STORAGE_VERSION = 2;
 
 function moneyToCents(amount) {
     return Math.round((Number(amount) + Number.EPSILON) * 100);
@@ -33,87 +33,8 @@ function now() {
 }
 
 function loadSavedRestaurantState() {
-    try {
-        const raw = globalThis.localStorage?.getItem("restaurantPosState");
-        if (!raw) return {};
-        const stored = JSON.parse(raw);
-        if (!stored || ![1, STORAGE_VERSION].includes(stored.version) || !stored.data || typeof stored.data !== "object") {
-            return { storageError: "Saved restaurant data has an unsupported format or version. It was left untouched; do not continue editing until it is reviewed." };
-        }
-        const data = stored.data;
-        let malformedRecords = false;
-        const records = (value, predicate) => {
-            if (value == null) return undefined;
-            if (!Array.isArray(value)) {
-                malformedRecords = true;
-                return undefined;
-            }
-            const valid = value.filter(record => {
-                const isValid = Boolean(record && typeof record === "object" && !Array.isArray(record) && predicate(record));
-                if (!isValid) malformedRecords = true;
-                return isValid;
-            });
-            return valid;
-        };
-        const kots = records(data.kots, item => item.id != null && item.orderId != null && Array.isArray(item.items))?.map(kot => ({
-            ...kot,
-            legacyClosed: kot.status === "Closed" ? kot.legacyClosed ?? true : kot.legacyClosed ?? false,
-            legacyWorkflowReview: kot.status === "Cancelled" && kot.cancellationReason === "Order completed without kitchen processing"
-                ? kot.legacyWorkflowReview || "Possible legacy direct-completion record; review bill and payment consistency."
-                : kot.legacyWorkflowReview,
-            items: kot.items.map(item => ({
-                ...item,
-                lineId: item.lineId ?? createId("kot_item"),
-                cancelledQuantity: Number.isSafeInteger(item.cancelledQuantity) && item.cancelledQuantity >= 0
-                    ? item.cancelledQuantity
-                    : 0,
-                cancellations: Array.isArray(item.cancellations) ? item.cancellations : []
-            }))
-        }));
-        const orders = records(data.orders, item => item.id != null && Array.isArray(item.items))?.map(order => {
-            const hasStartedKitchenWork = kots?.some(kot =>
-                kot.orderId === order.id && ["Preparing", "Ready", "Served"].includes(kot.status)
-            );
-            return {
-                ...order,
-                ...(stored.version < STORAGE_VERSION && order.status === "Open" && hasStartedKitchenWork
-                    ? { status: "In Progress" }
-                    : {}),
-                createdBy: order.createdBy ?? null,
-                assignedWaiter: order.assignedWaiter ?? null,
-                assignmentStatus: order.assignedWaiter ? "Assigned" : "Unassigned"
-            };
-        });
-        return {
-            tables: records(data.tables, item => item.id != null && typeof item.status === "string"),
-            orders,
-            kots,
-            bills: records(data.bills, item => item.id != null && item.orderId != null && Number.isFinite(Number(item.grandTotal))),
-            payments: records(data.payments, item => item.id != null && item.orderId != null && Number.isFinite(Number(item.amount))),
-            auditEvents: records(data.auditEvents, item => item.id != null && item.orderId != null) ?? [],
-            waiters: records(data.waiters, item => item.id != null && typeof item.username === "string"),
-            notifications: records(data.notifications, item => item.id != null && item.kotId != null),
-            roundRobinPointer: Number.isSafeInteger(data.roundRobinPointer) && data.roundRobinPointer >= 0 ? data.roundRobinPointer : 0,
-            menuItems: records(data.menuItems, item => item.id != null && typeof item.name === "string" && Number.isFinite(Number(item.price))),
-            restaurantSettings: data.restaurantSettings && typeof data.restaurantSettings === "object"
-                ? {
-                    name: typeof data.restaurantSettings.name === "string" ? data.restaurantSettings.name : "My Restaurant",
-                    phone: typeof data.restaurantSettings.phone === "string" ? data.restaurantSettings.phone : "",
-                    address: typeof data.restaurantSettings.address === "string" ? data.restaurantSettings.address : "",
-                    gstNumber: typeof data.restaurantSettings.gstNumber === "string" ? data.restaurantSettings.gstNumber : "",
-                    gstRate: Number.isFinite(Number(data.restaurantSettings.gstRate)) && Number(data.restaurantSettings.gstRate) >= 0 && Number(data.restaurantSettings.gstRate) <= 1
-                        ? Number(data.restaurantSettings.gstRate) : GST_RATE,
-                    currency: ["INR", "USD", "EUR"].includes(data.restaurantSettings.currency) ? data.restaurantSettings.currency : "INR",
-                    receiptFooter: typeof data.restaurantSettings.receiptFooter === "string" ? data.restaurantSettings.receiptFooter : ""
-                }
-                : undefined,
-            storageError: malformedRecords
-                ? "Some saved restaurant records have an invalid structure. The original data was left untouched; review it before continuing to edit."
-                : null
-        };
-    } catch {
-        return { storageError: "Saved restaurant data could not be read. It was left untouched; do not continue editing until it is reviewed." };
-    }
+    // Browser storage is reserved for authentication only. Business data comes from MongoDB.
+    return {};
 }
 
 function normalizeItems(items = [], menuCatalog = []) {
@@ -276,14 +197,7 @@ function createReadyKotNotification(kot, order, assignedWaiter, timestamp) {
 export function RestaurantProvider({ children }) {
     const [savedState] = useState(loadSavedRestaurantState);
     const [storageError, setStorageError] = useState(savedState.storageError ?? null);
-    const [tables, setTablesState] = useState(() => savedState.tables ?? [
-        { id: 1, status: "Available" },
-        { id: 2, status: "Occupied" },
-        { id: 3, status: "Available" },
-        { id: 4, status: "Occupied" },
-        { id: 5, status: "Available" },
-        { id: 6, status: "Reserved" }
-    ]);
+    const [tables, setTablesState] = useState(() => savedState.tables ?? []);
 
     const [restaurantSettings, setRestaurantSettingsState] = useState(() => ({
         name: "My Restaurant",
@@ -302,15 +216,15 @@ export function RestaurantProvider({ children }) {
     const [payments, setPaymentsState] = useState(() => savedState.payments ?? []);
     const [auditEvents, setAuditEventsState] = useState(() => savedState.auditEvents ?? []);
     const [waiters, setWaitersState] = useState(() => savedState.waiters ?? []);
+    const [kitchenStaff, setKitchenStaff] = useState([]);
+    const [managerAccounts, setManagerAccounts] = useState([]);
     const [roundRobinPointer, setRoundRobinPointerState] = useState(() => savedState.roundRobinPointer ?? 0);
     const [notifications, setNotificationsState] = useState(() => savedState.notifications ?? []);
 
-    const [menuItems, setMenuItemsState] = useState(() => savedState.menuItems ?? [
-        { id: 1, name: "Chicken Biryani", price: 250, available: true },
-        { id: 2, name: "Paneer Butter Masala", price: 220, available: true },
-        { id: 3, name: "Veg Fried Rice", price: 180, available: true },
-        { id: 4, name: "Chicken 65", price: 200, available: true }
-    ]);
+    const [menuItems, setMenuItemsState] = useState(() => savedState.menuItems ?? []);
+    const [remoteStateReady, setRemoteStateReady] = useState(false);
+    const [remoteStateError, setRemoteStateError] = useState(null);
+    const [remoteRetryCount, setRemoteRetryCount] = useState(0);
 
     const stateSnapshotRef = useRef({
         tables, orders, kots, bills, payments, auditEvents, menuItems,
@@ -349,58 +263,57 @@ export function RestaurantProvider({ children }) {
     const setRoundRobinPointer = update => updateDraftState("roundRobinPointer", update);
     const setNotifications = update => updateDraftState("notifications", update);
 
-    function runPersistedMutation(mutation) {
-        if (storageError) throw new Error(storageError);
-        if (mutationDraftRef.current) throw new Error("A restaurant update is already being processed.");
-
-        const previous = stateSnapshotRef.current;
-        const draft = { ...previous };
-        mutationDraftRef.current = draft;
-        let result;
-        try {
-            result = mutation();
-        } finally {
-            mutationDraftRef.current = null;
-        }
-
-        if (result?.ok === false) return result;
-
-        try {
-            if (!globalThis.localStorage) throw new Error("Browser storage is unavailable.");
-            globalThis.localStorage.setItem("restaurantPosState", JSON.stringify({
-                version: STORAGE_VERSION,
-                data: draft
-            }));
-        } catch (error) {
-            const message = `Could not save this change to browser storage. No change was applied. Further edits are paused. ${error?.message || "Check available storage and reload after resolving the issue."}`;
-            setStorageError(message);
-            throw new Error(message, { cause: error });
-        }
-
-        stateSnapshotRef.current = draft;
-        Object.keys(draft).forEach(key => {
-            if (draft[key] !== previous[key]) stateSetters[key](draft[key]);
-        });
-        return result;
+    async function refreshRemoteState() {
+        const { data } = await apiRequest('/state');
+        // The server is now authoritative, so discard the obsolete combined browser business-state key.
+        try { globalThis.localStorage?.removeItem("restaurantPosState"); }
+        catch { /* The app continues with the state returned by the backend. */ }
+        const merged = { ...stateSnapshotRef.current, ...data };
+        stateSnapshotRef.current = merged;
+        Object.entries(stateSetters).forEach(([key, setter]) => { if (merged[key] !== undefined) setter(merged[key]); });
+        setStorageError(null);
+        setRemoteStateError(null);
+        setRemoteStateReady(true);
+        return merged;
     }
 
     useEffect(() => {
-        if (storageError) return undefined;
-        try {
-            if (!globalThis.localStorage) throw new Error("Browser storage is unavailable.");
-            globalThis.localStorage.setItem("restaurantPosState", JSON.stringify({
-                version: STORAGE_VERSION,
-                data: stateSnapshotRef.current
-            }));
-        } catch (error) {
-            const message = `Could not save restaurant data to browser storage. Further edits are paused. ${error?.message || "Check available storage and reload after resolving the issue."}`;
-            const timer = globalThis.setTimeout(() => setStorageError(message), 0);
-            return () => globalThis.clearTimeout(timer);
-        }
-        return undefined;
-    }, [storageError]);
+        let active = true;
+        const loadRemoteState = async () => {
+            try {
+                if (!active) return;
+                setRemoteStateReady(false);
+                setRemoteStateError(null);
+                const session = await apiRequest('/auth/me');
+                if (!active) return;
+                await refreshRemoteState();
+                if (session.user?.role === 'Owner') {
+                    const { users = [] } = await apiRequest('/users');
+                    if (active) {
+                        setKitchenStaff(users.filter(account => account.role === 'Kitchen Staff'));
+                        setManagerAccounts(users.filter(account => account.role === 'Manager'));
+                    }
+                }
+            } catch (error) {
+                if (active) {
+                    const endpoint = error.apiPath ? `${error.apiMethod} ${error.apiPath}` : 'restaurant data API';
+                    setRemoteStateError(error.status === 401
+                        ? `Your session could not be verified while loading ${endpoint}. Sign in again.`
+                        : `Could not load server data via ${endpoint}. ${error.message || 'Check the API connection and try again.'}`);
+                    setRemoteStateReady(true);
+                }
+            }
+        };
+        globalThis.addEventListener?.('restaurant-auth-change', loadRemoteState);
+        loadRemoteState();
+        return () => { active = false; globalThis.removeEventListener?.('restaurant-auth-change', loadRemoteState); };
+    // Initial state is loaded once per authenticated session; the event handles sign in/out.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [remoteRetryCount]);
 
-    function addWaiterAccount({ username, name }) {
+    // eslint-disable-next-line no-unused-vars
+    function addWaiterAccount(input = {}) {
+        const { username, name } = input;
         requirePermission("waiters:manage");
         const normalizedUsername = String(username || "").trim();
         const normalizedName = String(name || "").trim();
@@ -410,7 +323,7 @@ export function RestaurantProvider({ children }) {
         }
         const timestamp = now();
         const waiter = {
-            id: createId("waiter"),
+            id: input.id ?? createId("waiter"),
             username: normalizedUsername,
             name: normalizedName,
             role: "Waiter",
@@ -422,6 +335,7 @@ export function RestaurantProvider({ children }) {
         return waiter;
     }
 
+    // eslint-disable-next-line no-unused-vars
     function addRestaurantTable({ name, capacity }) {
         requirePermission("tables:manage");
         const normalizedName = String(name || "").trim();
@@ -434,6 +348,7 @@ export function RestaurantProvider({ children }) {
         return table;
     }
 
+    // eslint-disable-next-line no-unused-vars
     function updateRestaurantTable(tableId, changes = {}) {
         requirePermission("tables:manage");
         const table = tables.find(item => String(item.id) === String(tableId));
@@ -449,6 +364,7 @@ export function RestaurantProvider({ children }) {
         ));
     }
 
+    // eslint-disable-next-line no-unused-vars
     function setRestaurantTableStatus(tableId, status) {
         requirePermission("tables:manage");
         if (!["Available", "Occupied", "Reserved"].includes(status)) throw new Error("Invalid table status.");
@@ -463,6 +379,7 @@ export function RestaurantProvider({ children }) {
         ));
     }
 
+    // eslint-disable-next-line no-unused-vars
     function toggleRestaurantTableActive(tableId) {
         requirePermission("tables:manage");
         const table = tables.find(item => String(item.id) === String(tableId));
@@ -476,6 +393,7 @@ export function RestaurantProvider({ children }) {
         ));
     }
 
+    // eslint-disable-next-line no-unused-vars
     function saveMenuItem(menuItemId, input) {
         requirePermission("menu:manage");
         const name = String(input?.name || "").trim();
@@ -499,6 +417,7 @@ export function RestaurantProvider({ children }) {
         return item;
     }
 
+    // eslint-disable-next-line no-unused-vars
     function toggleMenuItemAvailability(menuItemId) {
         requirePermission("menu:manage");
         const existing = menuItems.find(item => String(item.id) === String(menuItemId));
@@ -511,6 +430,7 @@ export function RestaurantProvider({ children }) {
         return next;
     }
 
+    // eslint-disable-next-line no-unused-vars
     function updateWaiterAccountStatus(waiterId, active) {
         requirePermission("waiters:manage");
         if (typeof active !== "boolean") throw new Error("Waiter account status must be active or inactive.");
@@ -541,6 +461,7 @@ export function RestaurantProvider({ children }) {
         }
     }
 
+    // eslint-disable-next-line no-unused-vars
     function assignOrderWaiter(orderId, waiterId) {
         requirePermission("waiters:manage");
         const order = orders.find(item => item.id === orderId);
@@ -583,6 +504,7 @@ export function RestaurantProvider({ children }) {
         });
     }
 
+    // eslint-disable-next-line no-unused-vars
     function markNotificationRead(notificationId) {
         if (storageError) throw new Error(storageError);
         const user = getStoredUser();
@@ -661,6 +583,7 @@ export function RestaurantProvider({ children }) {
         }
     }
 
+    // eslint-disable-next-line no-unused-vars
     function updateRestaurantSettings(nextSettings) {
         if (storageError) return { ok: false, error: storageError };
         const user = getStoredUser();
@@ -694,6 +617,7 @@ export function RestaurantProvider({ children }) {
         };
     }
 
+    // eslint-disable-next-line no-unused-vars
     function createOrder(input) {
         requirePermission("orders:create");
         if (!input || !Array.isArray(input.items) || input.items.length === 0) {
@@ -823,6 +747,7 @@ export function RestaurantProvider({ children }) {
         return order;
     }
 
+    // eslint-disable-next-line no-unused-vars
     function addItemsToOrder(orderId, newItems) {
         requirePermission("orders:addItems");
         const order = orders.find(item => item.id === orderId);
@@ -931,6 +856,7 @@ export function RestaurantProvider({ children }) {
         return kot;
     }
 
+    // eslint-disable-next-line no-unused-vars
     function updateKotStatus(kotId, status, cancellationReason = "") {
         requirePermission("kitchen:update");
         const allowedStatuses = ["Queued", "Preparing", "Ready", "Cancelled"];
@@ -1065,6 +991,7 @@ export function RestaurantProvider({ children }) {
         }
     }
 
+    // eslint-disable-next-line no-unused-vars
     function serveKot(kotId) {
         requirePermission("kitchen:serve");
         const user = getStoredUser();
@@ -1087,6 +1014,7 @@ export function RestaurantProvider({ children }) {
         return { ...kot, status: "Served", servedAt: timestamp, servedBy: actor, updatedAt: timestamp };
     }
 
+    // eslint-disable-next-line no-unused-vars
     function cancelKotItem(kotId, lineId, quantity, reasonInput) {
         requirePermission("kitchen:cancel");
         const kot = kots.find(item => item.id === kotId);
@@ -1141,6 +1069,7 @@ export function RestaurantProvider({ children }) {
         return updatedKots.find(item => item.id === kotId);
     }
 
+    // eslint-disable-next-line no-unused-vars
     function updateOrderStatus(orderId, status, options = {}) {
         requirePermission("orders:manage");
         if (!(["Completed", "Cancelled"].includes(status))) throw new Error("Orders can only be completed or cancelled through this action.");
@@ -1244,6 +1173,7 @@ export function RestaurantProvider({ children }) {
         return { ...order, status: "Cancelled", cancellationReason: reason, cancelledBy, cancelledAt: timestamp };
     }
 
+    // eslint-disable-next-line no-unused-vars
     function setBillDiscount(orderId, discountAmount) {
         requirePermission("billing:manage");
         const bill = bills.find(item => item.orderId === orderId);
@@ -1323,6 +1253,7 @@ export function RestaurantProvider({ children }) {
         };
     }
 
+    // eslint-disable-next-line no-unused-vars
     function recordPayment(orderId, paymentInput) {
         requirePermission("billing:manage");
         const order = orders.find(item => item.id === orderId);
@@ -1480,6 +1411,7 @@ export function RestaurantProvider({ children }) {
         return payment;
     }
 
+    // eslint-disable-next-line no-unused-vars
     function settleZeroBalanceBill(billId) {
         requirePermission("billing:manage");
         const bill = bills.find(item => item.id === billId);
@@ -1530,6 +1462,7 @@ export function RestaurantProvider({ children }) {
         return settledBill;
     }
 
+    // eslint-disable-next-line no-unused-vars
     function updateBillStatus(billId, status) {
         requirePermission("billing:manage");
         if (!["Open", "Settled", "Void"].includes(status)) {
@@ -1596,41 +1529,154 @@ export function RestaurantProvider({ children }) {
                 payments,
                 auditEvents,
                 waiters,
+                kitchenStaff,
+                managerAccounts,
                 notifications,
                 storageError,
+                remoteStateReady,
+                remoteStateError,
+                retryRemoteState: () => setRemoteRetryCount(value => value + 1),
                 menuItems,
                 restaurantSettings,
-                saveMenuItem: (...args) => runPersistedMutation(() => saveMenuItem(...args)),
-                toggleMenuItemAvailability: (...args) => runPersistedMutation(() => toggleMenuItemAvailability(...args)),
-                updateRestaurantSettings: (...args) => storageError
-                    ? { ok: false, error: storageError }
-                    : runPersistedMutation(() => updateRestaurantSettings(...args)),
-                addRestaurantTable: (...args) => runPersistedMutation(() => addRestaurantTable(...args)),
-                updateRestaurantTable: (...args) => runPersistedMutation(() => updateRestaurantTable(...args)),
-                setRestaurantTableStatus: (...args) => runPersistedMutation(() => setRestaurantTableStatus(...args)),
-                toggleRestaurantTableActive: (...args) => runPersistedMutation(() => toggleRestaurantTableActive(...args)),
-                addWaiterAccount: (...args) => runPersistedMutation(() => addWaiterAccount(...args)),
-                updateWaiterAccountStatus: (...args) => {
-                    const result = runPersistedMutation(() => updateWaiterAccountStatus(...args));
+                saveMenuItem: async (menuItemId, input) => {
+                    const result = menuItemId == null
+                        ? await apiRequest('/menu', { method: 'POST', body: input })
+                        : await apiRequest(`/menu/${encodeURIComponent(menuItemId)}`, { method: 'PATCH', body: input });
+                    await refreshRemoteState();
+                    return result.menuItem;
+                },
+                toggleMenuItemAvailability: async (menuItemId) => {
+                    const item = menuItems.find(current => String(current.id) === String(menuItemId));
+                    if (!item) throw new Error('Menu item not found.');
+                    const available = item.available === false;
+                    await apiRequest(`/menu/${encodeURIComponent(menuItemId)}`, { method: 'PATCH', body: { available } });
+                    await refreshRemoteState();
+                    return available;
+                },
+                updateRestaurantSettings: async (settings) => {
+                    const result = await apiRequest('/settings', { method: 'PATCH', body: settings });
+                    await refreshRemoteState();
+                    return { ok: true, settings: result.settings };
+                },
+                addRestaurantTable: async (input) => {
+                    const result = await apiRequest('/tables', { method: 'POST', body: input });
+                    await refreshRemoteState();
+                    return result.table;
+                },
+                updateRestaurantTable: async (tableId, changes) => {
+                    const result = await apiRequest(`/tables/${encodeURIComponent(tableId)}`, { method: 'PATCH', body: changes });
+                    await refreshRemoteState();
+                    return result.table;
+                },
+                setRestaurantTableStatus: async (tableId, status) => {
+                    const result = await apiRequest(`/tables/${encodeURIComponent(tableId)}`, { method: 'PATCH', body: { status } });
+                    await refreshRemoteState();
+                    return result.table;
+                },
+                toggleRestaurantTableActive: async (tableId) => {
+                    const table = tables.find(current => String(current.id) === String(tableId));
+                    if (!table) throw new Error('Table not found.');
+                    const result = await apiRequest(`/tables/${encodeURIComponent(tableId)}`, { method: 'PATCH', body: { active: table.active === false } });
+                    await refreshRemoteState();
+                    return result.table;
+                },
+                addWaiterAccount: async (...args) => {
+                    const input = args[0] || {};
+                    const existingProfile = waiters.find(waiter => waiter.username.toLowerCase() === String(input.username || '').trim().toLowerCase());
+                    await apiRequest('/users', { method: 'POST', body: { username: input.username, name: input.name, password: input.password, role: 'Waiter' } });
+                    const refreshed = await refreshRemoteState();
+                    return refreshed.waiters.find(waiter => waiter.username.toLowerCase() === (existingProfile?.username || input.username).toLowerCase());
+                },
+                addKitchenStaffAccount: async (input) => {
+                    const { user } = await apiRequest('/users', { method: 'POST', body: { username: input.username, name: input.name, password: input.password, role: 'Kitchen Staff' } });
+                    setKitchenStaff(previous => [...previous.filter(account => account.id !== user.id), user]);
+                    return user;
+                },
+                addManagerAccount: async (input) => {
+                    const { user } = await apiRequest('/users', { method: 'POST', body: { username: input.username, name: input.name, password: input.password, role: 'Manager' } });
+                    setManagerAccounts(previous => [...previous.filter(account => account.id !== user.id), user]);
+                    return user;
+                },
+                updateWaiterAccountStatus: async (...args) => {
+                    const waiter = waiters.find(item => item.id === args[0]);
+                    if (waiter) {
+                        const { users = [] } = await apiRequest('/users');
+                        const account = users.find(user => user.username.toLowerCase() === waiter.username.toLowerCase());
+                        if (account) await apiRequest(`/users/${account._id || account.id}`, { method: 'PATCH', body: { active: args[1] } });
+                    }
+                    const result = await refreshRemoteState();
                     if (args[1] === false && typeof CustomEvent !== "undefined") {
                         globalThis.dispatchEvent?.(new CustomEvent("restaurant-waiter-account-change", {
                             detail: { waiterId: args[0], active: false }
                         }));
                     }
-                    return result;
+                    return result.waiters?.find(item => item.id === args[0]);
                 },
-                assignOrderWaiter: (...args) => runPersistedMutation(() => assignOrderWaiter(...args)),
-                markNotificationRead: (...args) => runPersistedMutation(() => markNotificationRead(...args)),
-                createOrder: (...args) => runPersistedMutation(() => createOrder(...args)),
-                addItemsToOrder: (...args) => runPersistedMutation(() => addItemsToOrder(...args)),
-                updateKotStatus: (...args) => runPersistedMutation(() => updateKotStatus(...args)),
-                serveKot: (...args) => runPersistedMutation(() => serveKot(...args)),
-                cancelKotItem: (...args) => runPersistedMutation(() => cancelKotItem(...args)),
-                updateOrderStatus: (...args) => runPersistedMutation(() => updateOrderStatus(...args)),
-                setBillDiscount: (...args) => runPersistedMutation(() => setBillDiscount(...args)),
-                recordPayment: (...args) => runPersistedMutation(() => recordPayment(...args)),
-                updateBillStatus: (...args) => runPersistedMutation(() => updateBillStatus(...args)),
-                settleZeroBalanceBill: (...args) => runPersistedMutation(() => settleZeroBalanceBill(...args))
+                assignOrderWaiter: async (orderId, waiterId) => {
+                    const result = await apiRequest(`/orders/${encodeURIComponent(orderId)}/assignment`, { method: 'PATCH', body: { waiterId } });
+                    await refreshRemoteState();
+                    return result.order;
+                },
+                markNotificationRead: async (notificationId) => {
+                    const result = await apiRequest(`/notifications/${encodeURIComponent(notificationId)}/read`, { method: 'PATCH', body: {} });
+                    await refreshRemoteState();
+                    return result.notification;
+                },
+                createOrder: async (input) => {
+                    const result = await apiRequest('/orders', { method: 'POST', body: input });
+                    await refreshRemoteState();
+                    return result.order;
+                },
+                addItemsToOrder: async (orderId, items) => {
+                    const result = await apiRequest(`/orders/${encodeURIComponent(orderId)}/items`, { method: 'POST', body: { items } });
+                    await refreshRemoteState();
+                    return result.kot;
+                },
+                updateKotStatus: async (kotId, status, cancellationReason = '') => {
+                    const result = await apiRequest(`/kots/${encodeURIComponent(kotId)}/status`, { method: 'PATCH', body: { status, reason: cancellationReason } });
+                    await refreshRemoteState();
+                    return result.kot;
+                },
+                serveKot: async (kotId) => {
+                    const result = await apiRequest(`/kots/${encodeURIComponent(kotId)}/status`, { method: 'PATCH', body: { status: 'Served' } });
+                    await refreshRemoteState();
+                    return result.kot;
+                },
+                cancelKotItem: async (kotId, lineId, quantity, reason) => {
+                    const result = await apiRequest(`/kots/${encodeURIComponent(kotId)}/items/${encodeURIComponent(lineId)}/cancellations`, { method: 'POST', body: { quantity, reason } });
+                    await refreshRemoteState();
+                    return result.kot;
+                },
+                updateOrderStatus: async (orderId, status, options = {}) => {
+                    const result = await apiRequest(`/orders/${encodeURIComponent(orderId)}/status`, { method: 'PATCH', body: { status, ...options } });
+                    await refreshRemoteState();
+                    return result.order;
+                },
+                setBillDiscount: async (orderId, discount) => {
+                    const result = await apiRequest(`/billing/${encodeURIComponent(orderId)}/discount`, { method: 'PATCH', body: { discount } });
+                    await refreshRemoteState();
+                    return result.bill;
+                },
+                recordPayment: async (orderId, paymentInput) => {
+                    const idempotencyKey = paymentInput.idempotencyKey || globalThis.crypto?.randomUUID?.() || `payment_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+                    const result = await apiRequest(`/billing/${encodeURIComponent(orderId)}/payments`, { method: 'POST', headers: { 'Idempotency-Key': idempotencyKey }, body: paymentInput });
+                    await refreshRemoteState();
+                    return result.payment;
+                },
+                updateBillStatus: async (billId, status) => {
+                    const bill = bills.find(item => item.id === billId);
+                    if (!bill) throw new Error('Bill not found.');
+                    const result = await apiRequest(`/billing/${encodeURIComponent(bill.orderId)}/status`, { method: 'PATCH', body: { status } });
+                    await refreshRemoteState();
+                    return result.bill;
+                },
+                settleZeroBalanceBill: async (billId) => {
+                    const bill = bills.find(item => item.id === billId);
+                    if (!bill) throw new Error('Bill not found.');
+                    const result = await apiRequest(`/billing/${encodeURIComponent(bill.orderId)}/discount`, { method: 'PATCH', body: { discount: bill.discount } });
+                    await refreshRemoteState();
+                    return result.bill;
+                }
             }}
         >
             {children}
